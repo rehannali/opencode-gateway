@@ -1,0 +1,32 @@
+FROM node:20-slim
+
+# System deps for opencode binary + healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install opencode globally via npm
+RUN npm install -g opencode@latest
+
+# Persistent data dirs (auth tokens, config, session data)
+RUN mkdir -p /root/.local/share/opencode /root/.config/opencode /workspace
+
+WORKDIR /workspace
+
+EXPOSE 4096
+
+# ── Log configuration defaults ────────────────────────────────────────────────
+# Override any of these via environment / docker-compose
+ENV OPENCODE_DISABLE_AUTOUPDATE=true
+ENV OPENCODE_LOG_LEVEL=INFO
+# Days to keep opencode's internal log files before purging
+ENV LOG_RETENTION_DAYS=7
+# Seconds between log cleanup runs (86400 = 24 h)
+ENV LOG_CLEANUP_INTERVAL=86400
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+# entrypoint.sh starts a background log-cleanup loop then exec's opencode serve
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

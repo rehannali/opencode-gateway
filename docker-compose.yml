@@ -1,0 +1,113 @@
+services:
+
+  # ── opencode headless server ──────────────────────────────────────────────
+  # Runs "opencode serve" on port 4096 — handles all AI providers, auth,
+  # sessions, and model routing. This is the AI brain.
+  #
+  # NOTE: no container_name — Dokploy requires this to be absent for its logs,
+  # metrics, and monitoring features to work correctly.
+  opencode:
+    build:
+      context: .
+      dockerfile: Dockerfile.opencode
+    restart: unless-stopped
+    environment:
+      - OPENCODE_DISABLE_AUTOUPDATE=true
+      - OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD:-}
+      # Internal log verbosity for opencode serve (DEBUG|INFO|WARN|ERROR)
+      # Passed via --log-level global flag; --print-logs streams them to stderr → docker logs
+      - OPENCODE_LOG_LEVEL=${OPENCODE_LOG_LEVEL:-INFO}
+      # Log file retention: purge files in ~/.local/share/opencode/log/ older than this many days
+      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
+      # How often (seconds) the cleanup loop runs — default 86400 (24 h)
+      - LOG_CLEANUP_INTERVAL=${LOG_CLEANUP_INTERVAL:-86400}
+      # Inline opencode config as JSON — avoids a file bind-mount that breaks on Dokploy redeployment.
+      # opencode reads this env var instead of opencode.json when set.
+      # Extend with any opencode config options: https://opencode.ai/docs/config
+      - OPENCODE_CONFIG_CONTENT=${OPENCODE_CONFIG_CONTENT:-{"autoshare":false}}
+      # Provider API keys — opencode reads these from env automatically.
+      # Only set these if you're NOT using OAuth flows (Copilot, ChatGPT Plus, etc.)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - XAI_API_KEY=${XAI_API_KEY:-}
+    volumes:
+      # Auth tokens (GitHub Copilot OAuth, ChatGPT Plus, Claude Pro, etc.)
+      - opencode-share:/root/.local/share/opencode
+      # Config persistence
+      - opencode-config:/root/.config/opencode
+      # NOTE: opencode.json is intentionally NOT mounted here.
+      # In Dokploy, relative bind mounts (./file) break on every redeploy because
+      # Dokploy re-clones the repo into a fresh directory. Config is passed via
+      # OPENCODE_CONFIG_CONTENT above instead.
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4096/global/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    # Log rotation — keep max 5 × 10 MB = 50 MB per container
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+    # On dokploy-network so gateway can reach it by service name (opencode:4096)
+    # No Traefik labels → not exposed externally, internal only
+    networks:
+      - dokploy-network
+
+  # ── Node.js API gateway ───────────────────────────────────────────────────
+  # Thin HTTP wrapper: model caching, n8n-friendly JSON, simplified endpoints,
+  # long timeout support, OpenAI-compatible /v1/chat/completions.
+  #
+  # Domain routing: assign your domain in Dokploy → Domains tab.
+  # Traefik (used by Dokploy) routes: Cloudflare Tunnel → Traefik → gateway:3000
+  #
+  # NOTE: no container_name — Dokploy requires this to be absent for its logs,
+  # metrics, and monitoring features to work correctly.
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Expose port 3000 to Traefik — no host binding (Traefik handles routing).
+    # Do NOT use "host:container" format here; that would bypass Traefik entirely.
+    ports:
+      - 3000
+    environment:
+      - PORT=3000
+      - OPENCODE_URL=http://opencode:4096
+      - OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD:-}
+      - SERVER_TIMEOUT=${SERVER_TIMEOUT:-600000}
+      - CACHE_TTL=${CACHE_TTL:-600}
+      - PROXY_API_KEY=${PROXY_API_KEY:-}
+      # Log verbosity: debug | info | warn | error  (default: info)
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      opencode:
+        condition: service_healthy
+    stop_grace_period: 30s
+    # Log rotation — keep max 5 × 5 MB = 25 MB for the gateway
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "5"
+        compress: "true"
+    networks:
+      - dokploy-network
+
+volumes:
+  opencode-share:
+  opencode-config:
+
+networks:
+  # Dokploy's shared Traefik network — must be external: true.
+  # Both services join it so they can reach each other by service name,
+  # and Traefik can route inbound traffic to the gateway.
+  dokploy-network:
+    external: true
