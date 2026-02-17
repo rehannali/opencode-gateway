@@ -13,9 +13,9 @@ Built for deployment on **Dokploy** via Docker Compose, with **n8n-friendly JSON
 │             │       │                       │       │                    │
 │  n8n / curl │──────>│  Gateway (Node.js)    │──────>│  opencode serve    │
 │  / any HTTP │ :3000 │  - Model caching      │ :4096 │  - 75+ providers   │
-│   client    │       │  - n8n-friendly JSON   │       │  - OAuth flows     │
-│             │       │  - OpenAI-compatible   │       │  - Session mgmt    │
-│             │       │  - Long timeout        │       │  - Tool use        │
+│   client    │       │  - n8n-friendly JSON  │       │  - OAuth flows     │
+│             │       │  - OpenAI-compatible  │       │  - Session mgmt    │
+│             │       │  - Long timeout       │       │  - Tool use        │
 └─────────────┘       └───────────────────────┘       └────────────────────┘
                               Docker network (internal)
 ```
