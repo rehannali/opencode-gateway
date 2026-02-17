@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # Install opencode globally via npm
-RUN npm install -g opencode@latest
+RUN npm install -g opencode-ai
 
 # Persistent data dirs (auth tokens, config, session data)
 RUN mkdir -p /root/.local/share/opencode /root/.config/opencode /workspace
