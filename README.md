@@ -157,12 +157,43 @@ curl -X POST http://localhost:3000/auth/copilot/oauth/callback \
 
 Requires an active [ChatGPT Plus or Pro subscription](https://chatgpt.com/pricing).
 
+**Step 1 — Start the OAuth flow:**
 ```bash
 curl -X POST http://localhost:3000/auth/openai/oauth/start \
   -H "Content-Type: application/json"
 ```
 
-Follow the instructions returned in the response to authenticate via your browser.
+The response contains a URL and step-by-step instructions. OpenAI uses a PKCE browser flow — opencode sets its `redirect_uri` to `http://localhost:1455/auth/callback`, which is unreachable from a browser when running in Docker. The gateway handles this with a proxy endpoint.
+
+**Step 2 — Open the authorization URL** from the `url` field in your browser and complete the OpenAI login.
+
+**Step 3 — Handle the redirect.** After authorizing, your browser will try to load `http://localhost:1455/auth/callback?code=...&state=...`. This page will fail to load (expected). Copy the full URL from the browser address bar.
+
+**Step 4 — Forward the callback to the gateway.** Replace `localhost:1455` with your gateway address and call it as a GET request:
+```bash
+curl "http://localhost:3000/auth/callback?code=<CODE>&state=<STATE>"
+```
+
+> **Important:** Authorization codes expire in ~5 minutes. Complete steps 2–4 promptly.
+
+**Step 5 — Restart the opencode container** so it reloads the saved credentials:
+```bash
+docker compose restart opencode
+```
+
+**Step 6 — Verify:**
+```bash
+curl http://localhost:3000/auth/status
+```
+
+OpenAI should now appear in the `connected` list.
+
+> **Alternative — API key:** If you have an OpenAI API key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys), you can skip the OAuth flow entirely:
+> ```bash
+> curl -X POST http://localhost:3000/auth/openai/apikey \
+>   -H "Content-Type: application/json" \
+>   -d '{"apiKey": "sk-proj-..."}'
+> ```
 
 ### Claude Pro / Max (no API key needed)
 
@@ -245,7 +276,8 @@ Response:
 |--------|------|-------------|
 | `GET` | `/auth/status` | List all providers and their connection status |
 | `POST` | `/auth/:provider/oauth/start` | Start OAuth flow. Optional body: `{"method": <number>}`. Auto-detects method if omitted. |
-| `POST` | `/auth/:provider/oauth/callback` | Complete OAuth flow |
+| `POST` | `/auth/:provider/oauth/callback` | Complete OAuth device-code flow |
+| `GET` | `/auth/callback` | PKCE browser callback proxy — forwards `?code=&state=` to opencode's internal listener (used for OpenAI / Anthropic browser flows) |
 | `POST` | `/auth/:provider/apikey` | Set API key. Body: `{"apiKey": "..."}` |
 
 **Supported OAuth providers:** `copilot`, `openai`, `anthropic`
@@ -711,6 +743,29 @@ SERVER_TIMEOUT=1200000  # 20 minutes
 ```
 
 Then restart: `docker compose up -d`
+
+### Provider still shows as disconnected after OAuth
+
+After completing an OAuth flow, opencode's running process may not reflect the new credentials until it reloads from disk. This is expected — the credentials are saved correctly, but the in-memory provider state is stale.
+
+**Fix:** Restart the opencode container:
+```bash
+docker compose restart opencode
+```
+
+Then check again:
+```bash
+curl http://localhost:3000/auth/status
+```
+
+You can also verify that credentials were saved inside the container before restarting:
+```bash
+docker compose exec opencode opencode auth ls
+```
+
+This should list all saved credentials. If your provider appears here, a restart is all that's needed.
+
+---
 
 ### OAuth flow not working
 
