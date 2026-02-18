@@ -60,13 +60,14 @@ router.post('/:providerId/oauth/start', async (req, res) => {
 
   // For device-code / "auto" flow (GitHub Copilot): opencode polls in the background.
   // The user code to enter at github.com/login/device is in result.instructions.
+  // Calling the callback is optional — opencode saves the token automatically once authorized.
   if (result.method === 'auto' && result.url) {
     response.steps = [
       `1. Open: ${result.url}`,
       `2. Enter the code shown in the "instructions" field above`,
       '3. Authorize in GitHub',
-      '4. Authorization completes automatically — opencode polls in the background',
-      `5. Verify with GET /auth/status or call POST /auth/${providerId}/oauth/callback if needed`,
+      '4. Token saved automatically — opencode polls in the background (no callback needed)',
+      `5. Verify success: GET /auth/status`,
     ];
   } else if (result.userCode || result.user_code) {
     response.steps = [

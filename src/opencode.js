@@ -141,7 +141,10 @@ async function startOAuth(providerId, method) {
 
 async function oauthCallback(providerId, body) {
   const id = resolveProviderId(providerId);
-  const r = await client.post(`/provider/${id}/oauth/callback`, body);
+  // opencode requires a numeric `method` in the callback body (same value used in authorize).
+  // Default to 0 when the caller omits it.
+  const payload = { method: 0, ...body };
+  const r = await client.post(`/provider/${id}/oauth/callback`, payload);
   return r.data;
 }
 
