@@ -70,7 +70,11 @@ async function listAllModels() {
   const allModels = [];
 
   for (const provider of data.all || []) {
-    const models = (provider.models || []).map((m) => ({
+    // opencode may return models as an array OR as an object keyed by model ID
+    const raw = provider.models || [];
+    const modelEntries = Array.isArray(raw) ? raw : Object.values(raw);
+
+    const models = modelEntries.map((m) => ({
       id: `${provider.id}/${m.id}`,
       model_id: m.id,
       provider_id: provider.id,
