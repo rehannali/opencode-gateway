@@ -89,7 +89,7 @@ async function getAuthMethods() {
  * OpenAI/Anthropic -> browser flow (returns url)
  */
 async function startOAuth(providerId) {
-  const r = await client.post(`/provider/${providerId}/oauth/authorize`);
+  const r = await client.post(`/provider/${providerId}/oauth/authorize`, {});
   return r.data;
 }
 
