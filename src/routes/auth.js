@@ -90,15 +90,18 @@ router.post('/:providerId/oauth/start', async (req, res, next) => {
       // Because the redirect_uri is localhost:1455, the browser redirect won't reach
       // opencode directly when it's running in Docker. Use the gateway's /auth/callback
       // endpoint to proxy the code back to opencode.
+      //
+      // ⚠️  Authorization codes expire in ~5 minutes — complete ALL steps within that window.
+      response.warning =
+        '⚠️  IMPORTANT: authorization codes expire in ~5 minutes. Complete steps 1-5 immediately.';
       response.steps = [
-        `1. Open this URL in your browser: ${result.url}`,
+        `1. Open this URL in your browser RIGHT NOW: ${result.url}`,
         `2. Complete authorization in ${authTarget}`,
         '3. Your browser will be redirected to localhost:1455/auth/callback?code=...&state=...',
-        '   That page will fail to load (expected — opencode is in Docker, not on your machine)',
-        '4. Copy the FULL URL from your browser address bar',
-        '5. Replace "localhost:1455" with your gateway address and call it as a GET request:',
+        '   That page will fail to load — that is expected (opencode is in Docker)',
+        '4. Immediately copy the FULL URL from your browser address bar',
+        '5. Within ~5 min of step 1, call the gateway with the code and state from that URL:',
         '   GET /auth/callback?code=<CODE>&state=<STATE>',
-        '   (copy the code= and state= values from the URL in step 4)',
         '6. Verify success: GET /auth/status',
       ];
     } else if (result.url) {
