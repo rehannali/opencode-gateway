@@ -24,6 +24,26 @@ const client = axios.create({
   },
 });
 
+// ── Provider ID aliases ───────────────────────────────────────────────────────
+// Maps user-friendly short names to opencode's canonical provider IDs.
+// opencode registers GitHub Copilot as "github-copilot", not "copilot".
+const PROVIDER_ALIASES = {
+  copilot: 'github-copilot',
+  'github-copilot': 'github-copilot',
+  'github-copilot-enterprise': 'github-copilot-enterprise',
+  openai: 'openai',
+  anthropic: 'anthropic',
+  google: 'google',
+  groq: 'groq',
+  openrouter: 'openrouter',
+  deepseek: 'deepseek',
+  xai: 'xai',
+};
+
+function resolveProviderId(id) {
+  return PROVIDER_ALIASES[id] || id;
+}
+
 // ── Health ────────────────────────────────────────────────────────────────────
 
 async function health() {
@@ -95,13 +115,15 @@ async function getAuthMethods() {
  * Callers can override by passing a specific method number.
  */
 async function startOAuth(providerId, method) {
+  const id = resolveProviderId(providerId);
+
   // If no method supplied, auto-detect from the provider's available auth methods.
   // /provider/auth only lists methods for already-configured providers, so if the
   // provider isn't listed yet (first-time auth) we fall back to 0 (device code flow).
   if (method === undefined) {
     try {
       const authMethods = await getAuthMethods();
-      const providerMethods = authMethods[providerId] || [];
+      const providerMethods = authMethods[id] || [];
       if (providerMethods.length > 0) {
         const first = providerMethods[0];
         method = typeof first === 'number' ? first : (first?.id ?? first?.value ?? 0);
@@ -113,12 +135,13 @@ async function startOAuth(providerId, method) {
     }
   }
 
-  const r = await client.post(`/provider/${providerId}/oauth/authorize`, { method });
+  const r = await client.post(`/provider/${id}/oauth/authorize`, { method });
   return r.data;
 }
 
 async function oauthCallback(providerId, body) {
-  const r = await client.post(`/provider/${providerId}/oauth/callback`, body);
+  const id = resolveProviderId(providerId);
+  const r = await client.post(`/provider/${id}/oauth/callback`, body);
   return r.data;
 }
 
@@ -127,7 +150,8 @@ async function oauthCallback(providerId, body) {
  * PUT /auth/:id — body depends on the provider (usually { apiKey: "..." })
  */
 async function setAuth(providerId, body) {
-  const r = await client.put(`/auth/${providerId}`, body);
+  const id = resolveProviderId(providerId);
+  const r = await client.put(`/auth/${id}`, body);
   return r.data;
 }
 
