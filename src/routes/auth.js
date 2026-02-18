@@ -116,7 +116,7 @@ router.post('/:providerId/oauth/start', async (req, res, next) => {
 });
 
 /**
- * GET /auth/callback
+ * GET|POST /auth/callback
  *
  * Browser-facing OAuth callback proxy for PKCE flows (OpenAI, Anthropic, etc.)
  *
@@ -126,20 +126,24 @@ router.post('/:providerId/oauth/start', async (req, res, next) => {
  * accepts the browser redirect and proxies the code + state to opencode's
  * internal listener so the token exchange can complete.
  *
- * Usage: GET /auth/callback?code=<CODE>&state=<STATE>
+ * Usage: GET  /auth/callback?code=<CODE>&state=<STATE>
+ *        POST /auth/callback?code=<CODE>&state=<STATE>
  * (copy these values from the localhost:1455/auth/callback URL in your browser)
  */
-router.get('/callback', async (req, res, next) => {
+async function handleOAuthCallback(req, res, next) {
   try {
-    if (!req.query.code) {
+    // Merge query params from both the URL and the body so either approach works
+    const params = { ...req.body, ...req.query };
+
+    if (!params.code) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required query param: code',
-        hint: 'Copy the full URL from your browser after OAuth redirect and call GET /auth/callback?code=...&state=...',
+        error: 'Missing required param: code',
+        hint: 'Copy the full URL shown in your browser after OAuth redirect and call:\n  GET /auth/callback?code=...&state=...',
       });
     }
 
-    const { status, data } = await oc.proxyOAuthCallback(req.query);
+    const { status, data } = await oc.proxyOAuthCallback(params);
 
     if (status >= 200 && status < 300) {
       res.json({
@@ -150,7 +154,7 @@ router.get('/callback', async (req, res, next) => {
         timestamp: new Date().toISOString(),
       });
     } else {
-      res.status(status).json({
+      res.status(status >= 100 ? status : 500).json({
         success: false,
         error: 'opencode listener returned an error',
         details: data,
@@ -160,15 +164,53 @@ router.get('/callback', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}
+
+router.get('/callback', handleOAuthCallback);
+router.post('/callback', handleOAuthCallback);
 
 /**
  * POST /auth/:providerId/oauth/callback
- * Complete the OAuth flow after user has authorized (device-code flows).
+ *
+ * Handles both OAuth flow types:
+ *
+ * 1. PKCE browser flows (OpenAI, Anthropic): when a `code` query param is
+ *    present (copied from the browser's localhost:1455 redirect URL), this
+ *    proxies the params to opencode's internal port-1455 listener.
+ *
+ * 2. Device-code flows (Copilot): no `code` param — signals opencode's REST
+ *    API to poll/complete the pending device-code authorization.
  */
 router.post('/:providerId/oauth/callback', async (req, res, next) => {
   try {
     const { providerId } = req.params;
+
+    // If code is present in the query string this is a PKCE browser callback —
+    // proxy it to opencode's port-1455 listener rather than the REST API.
+    if (req.query.code) {
+      const params = { ...req.body, ...req.query };
+      const { status, data } = await oc.proxyOAuthCallback(params);
+
+      if (status >= 200 && status < 300) {
+        return res.json({
+          success: true,
+          provider: providerId,
+          message: 'OAuth callback delivered to opencode successfully',
+          result: data,
+          next: 'Verify with GET /auth/status',
+          timestamp: new Date().toISOString(),
+        });
+      }
+      return res.status(status >= 100 ? status : 500).json({
+        success: false,
+        provider: providerId,
+        error: 'opencode listener returned an error',
+        details: data,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Device-code flow: notify opencode's REST API that auth is complete
     const result = await oc.oauthCallback(providerId, req.body);
     res.json({
       success: true,
