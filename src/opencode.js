@@ -85,11 +85,31 @@ async function getAuthMethods() {
 
 /**
  * Start OAuth for a provider.
- * GitHub Copilot  -> device flow (returns userCode + verificationUrl)
- * OpenAI/Anthropic -> browser flow (returns url)
+ * opencode requires a numeric `method` field matching the provider's auth method enum.
+ *
+ * GitHub Copilot  -> method 0 (device code flow — returns userCode + verificationUrl)
+ * OpenAI/Anthropic -> method 0 or 1 depending on version (browser flow — returns url)
+ *
+ * The gateway auto-detects the correct method by querying /provider/auth first.
+ * Callers can override by passing a specific method number.
  */
-async function startOAuth(providerId) {
-  const r = await client.post(`/provider/${providerId}/oauth/authorize`, {});
+async function startOAuth(providerId, method) {
+  // If no method supplied, auto-detect from the provider's available auth methods
+  if (method === undefined) {
+    const authMethods = await getAuthMethods();
+    const providerMethods = authMethods[providerId] || [];
+    if (providerMethods.length === 0) {
+      throw Object.assign(
+        new Error(`No OAuth methods available for provider '${providerId}'`),
+        { status: 400 }
+      );
+    }
+    // Methods may be numbers directly or objects with a numeric value
+    const first = providerMethods[0];
+    method = typeof first === 'number' ? first : (first?.id ?? first?.value ?? 0);
+  }
+
+  const r = await client.post(`/provider/${providerId}/oauth/authorize`, { method });
   return r.data;
 }
 

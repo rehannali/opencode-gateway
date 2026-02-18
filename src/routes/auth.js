@@ -37,11 +37,17 @@ router.get('/status', async (req, res) => {
  * Start OAuth device-flow or browser-flow for a provider.
  * Works for: copilot, openai (ChatGPT Plus/Pro), anthropic (Claude Pro/Max)
  *
+ * Optional body: { "method": <number> }
+ * If omitted, the gateway auto-detects the correct method from opencode's
+ * /provider/auth endpoint. Pass method explicitly only if auto-detect fails.
+ *
  * Example: POST /auth/copilot/oauth/start
+ * Example: POST /auth/copilot/oauth/start  { "method": 0 }
  */
 router.post('/:providerId/oauth/start', async (req, res) => {
   const { providerId } = req.params;
-  const result = await oc.startOAuth(providerId);
+  const { method } = req.body || {};
+  const result = await oc.startOAuth(providerId, method);
 
   const response = {
     success: true,

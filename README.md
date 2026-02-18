@@ -117,7 +117,15 @@ Requires an active [GitHub Copilot subscription](https://github.com/features/cop
 
 **Step 1 — Start device flow:**
 ```bash
-curl -X POST http://localhost:3000/auth/copilot/oauth/start
+curl -X POST http://localhost:3000/auth/copilot/oauth/start \
+  -H "Content-Type: application/json"
+```
+
+The gateway automatically detects the correct OAuth method for the provider. You can also pass it explicitly if needed:
+```bash
+curl -X POST http://localhost:3000/auth/copilot/oauth/start \
+  -H "Content-Type: application/json" \
+  -d '{"method": 0}'
 ```
 
 Response:
@@ -150,7 +158,8 @@ curl -X POST http://localhost:3000/auth/copilot/oauth/callback \
 Requires an active [ChatGPT Plus or Pro subscription](https://chatgpt.com/pricing).
 
 ```bash
-curl -X POST http://localhost:3000/auth/openai/oauth/start
+curl -X POST http://localhost:3000/auth/openai/oauth/start \
+  -H "Content-Type: application/json"
 ```
 
 Follow the instructions returned in the response to authenticate via your browser.
@@ -160,7 +169,8 @@ Follow the instructions returned in the response to authenticate via your browse
 Requires an active [Claude Pro or Max subscription](https://claude.ai/pricing).
 
 ```bash
-curl -X POST http://localhost:3000/auth/anthropic/oauth/start
+curl -X POST http://localhost:3000/auth/anthropic/oauth/start \
+  -H "Content-Type: application/json"
 ```
 
 Follow the instructions returned in the response to authenticate via your browser.
@@ -234,11 +244,13 @@ Response:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/auth/status` | List all providers and their connection status |
-| `POST` | `/auth/:provider/oauth/start` | Start OAuth flow (Copilot, OpenAI, Anthropic) |
+| `POST` | `/auth/:provider/oauth/start` | Start OAuth flow. Optional body: `{"method": <number>}`. Auto-detects method if omitted. |
 | `POST` | `/auth/:provider/oauth/callback` | Complete OAuth flow |
 | `POST` | `/auth/:provider/apikey` | Set API key. Body: `{"apiKey": "..."}` |
 
 **Supported OAuth providers:** `copilot`, `openai`, `anthropic`
+
+> **Note on the `method` field:** The gateway auto-detects the correct OAuth method for each provider by querying opencode's auth methods endpoint. You only need to pass `{"method": 0}` explicitly if auto-detection fails. All `/auth/*/oauth/start` requests must include `Content-Type: application/json`.
 
 **Supported API key providers:** `openai`, `anthropic`, `groq`, `openrouter`, `deepseek`, `xai`, `together-ai`, `fireworks-ai`, `cerebras`, and [70+ more](https://opencode.ai/docs/providers/)
 
@@ -701,6 +713,19 @@ SERVER_TIMEOUT=1200000  # 20 minutes
 Then restart: `docker compose up -d`
 
 ### OAuth flow not working
+
+**Always include `Content-Type: application/json`** in OAuth start requests:
+```bash
+curl -X POST http://localhost:3000/auth/copilot/oauth/start \
+  -H "Content-Type: application/json"
+```
+
+If you get a `400` error with `"Invalid input: expected number"`, the provider requires an explicit method. Pass `{"method": 0}` in the body:
+```bash
+curl -X POST http://localhost:3000/auth/copilot/oauth/start \
+  -H "Content-Type: application/json" \
+  -d '{"method": 0}'
+```
 
 Some OAuth flows (ChatGPT Plus, Claude Pro) require browser access. If your server is remote:
 1. Use SSH port forwarding: `ssh -L 3000:localhost:3000 your-server`
