@@ -153,6 +153,29 @@ async function oauthCallback(providerId, body) {
 }
 
 /**
+ * Proxy an OAuth browser callback to opencode's internal port-1455 listener.
+ *
+ * For PKCE browser flows (OpenAI, Anthropic, etc.) opencode starts a temporary
+ * HTTP server on port 1455 inside its container to receive the authorization code.
+ * Because the redirect_uri is hardcoded to "localhost:1455", and opencode runs
+ * inside Docker, the user's browser can never reach that port directly.
+ *
+ * This function forwards the code + state query params from the browser redirect
+ * to opencode's listener so the token exchange can complete.
+ */
+async function proxyOAuthCallback(queryParams) {
+  // Replace whatever port opencode's API is on with 1455 (the OAuth listener port)
+  const listenerBase = config.opencodeUrl.replace(/:\d+$/, ':1455');
+  const qs = new URLSearchParams(queryParams).toString();
+  const r = await axios.get(`${listenerBase}/auth/callback?${qs}`, {
+    timeout: 30000,
+    // Don't throw on non-2xx so we can relay the actual error message
+    validateStatus: () => true,
+  });
+  return { status: r.status, data: r.data };
+}
+
+/**
  * Set an API key for a provider directly.
  * PUT /auth/:id — body depends on the provider (usually { apiKey: "..." })
  */
@@ -233,6 +256,7 @@ module.exports = {
   getAuthMethods,
   startOAuth,
   oauthCallback,
+  proxyOAuthCallback,
   setAuth,
   createSession,
   deleteSession,
