@@ -70,19 +70,30 @@ router.post('/:providerId/oauth/start', async (req, res, next) => {
           ? 'OpenAI'
           : 'the provider';
 
-    const isPkceFlow =
-      result.url &&
-      (result.url.includes('code_challenge') ||
-        (!result.userCode && !result.user_code));
+    // Device-code flows provide the user code either in a dedicated field or
+    // embedded in `instructions` (e.g. "Enter code: NC65-NP5VI"). They also
+    // typically use a /device URL rather than a PKCE redirect URL.
+    const codeFromInstructions =
+      result.instructions &&
+      result.instructions.match(/enter code[:\s]+([A-Z0-9-]{4,})/i)?.[1];
+    const userCode = result.userCode || result.user_code || codeFromInstructions;
 
-    if (result.userCode || result.user_code) {
-      // Device-code flow (GitHub Copilot): user enters a short code at a URL
+    const isDeviceCodeFlow =
+      userCode ||
+      (result.url && result.url.includes('/device'));
+
+    const isPkceFlow =
+      !isDeviceCodeFlow && result.url && result.url.includes('code_challenge');
+
+    if (isDeviceCodeFlow) {
+      // Device-code flow (GitHub Copilot, OpenAI headless, etc.):
+      // opencode polls in the background — no callback needed.
       response.steps = [
         `1. Open: ${result.verificationUrl || result.verification_uri || result.url}`,
-        `2. Enter code: ${result.userCode || result.user_code}`,
+        `2. Enter code: ${userCode || '(see "instructions" field above)'}`,
         `3. Authorize in ${authTarget}`,
         '4. Token saved automatically — opencode polls in the background (no callback needed)',
-        '5. Verify success: GET /auth/status',
+        '5. Verify success: GET /auth/status (may take up to 60 seconds)',
       ];
     } else if (isPkceFlow) {
       // PKCE browser flow (OpenAI, Anthropic, etc.):
