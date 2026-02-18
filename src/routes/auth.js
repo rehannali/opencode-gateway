@@ -49,6 +49,8 @@ router.post('/:providerId/oauth/start', async (req, res) => {
   const { method } = req.body || {};
   const result = await oc.startOAuth(providerId, method);
 
+  // Preserve all fields from opencode (including `instructions` which contains
+  // the user code for device-code flows). Only add our own helper fields on top.
   const response = {
     success: true,
     provider: providerId,
@@ -56,15 +58,25 @@ router.post('/:providerId/oauth/start', async (req, res) => {
     timestamp: new Date().toISOString(),
   };
 
-  if (result.userCode || result.user_code) {
-    response.instructions = [
-      `1. Open: ${result.verificationUrl || result.verification_uri}`,
+  // For device-code / "auto" flow (GitHub Copilot): opencode polls in the background.
+  // The user code to enter at github.com/login/device is in result.instructions.
+  if (result.method === 'auto' && result.url) {
+    response.steps = [
+      `1. Open: ${result.url}`,
+      `2. Enter the code shown in the "instructions" field above`,
+      '3. Authorize in GitHub',
+      '4. Authorization completes automatically — opencode polls in the background',
+      `5. Verify with GET /auth/status or call POST /auth/${providerId}/oauth/callback if needed`,
+    ];
+  } else if (result.userCode || result.user_code) {
+    response.steps = [
+      `1. Open: ${result.verificationUrl || result.verification_uri || result.url}`,
       `2. Enter code: ${result.userCode || result.user_code}`,
       '3. Authorize the application',
       `4. Call POST /auth/${providerId}/oauth/callback`,
     ];
   } else if (result.url) {
-    response.instructions = [
+    response.steps = [
       `1. Open this URL in your browser: ${result.url}`,
       '2. Authenticate and approve',
       `3. If prompted, finalize via POST /auth/${providerId}/oauth/callback`,
